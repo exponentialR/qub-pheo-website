@@ -20,6 +20,29 @@ export class DriveDelivery {
     const response=await this.fetcher('https://www.googleapis.com/drive/v3/'+path,{...options,signal:this.timeout(),headers:{Authorization:'Bearer '+token,'content-type':'application/json',...options.headers},redirect:'error'});
     if(!response.ok)throw failure('DRIVE_HTTP_'+response.status,'Drive request failed ('+response.status+')');return response.json();
   }
+  async inspect(){
+    // Read-only live verification: never create, update or delete a permission.
+    const c=this.config;this.deadline=Date.now()+90000;
+    const token=await this.token(),folder=encodeURIComponent(c.folderId);
+    const meta=await this.api('files/'+folder+'?supportsAllDrives=true&fields=id,name,mimeType,trashed,capabilities(canShare)',token);
+    if(meta.id!==c.folderId||meta.mimeType!=='application/vnd.google-apps.folder'||meta.trashed||!meta.capabilities?.canShare)throw failure('FOLDER_NOT_SHAREABLE','Approved release folder is unavailable or cannot be shared');
+    let page,permissionCount=0,restricted=true,serviceRole=null;const seen=new Set();
+    do{
+      const query=new URLSearchParams({supportsAllDrives:'true',fields:'nextPageToken,permissions(type,role,emailAddress,deleted)',pageSize:'100'});
+      if(page)query.set('pageToken',page);
+      const data=await this.api('files/'+folder+'/permissions?'+query,token);
+      for(const permission of data.permissions||[]){
+        if(permission.deleted)continue;
+        permissionCount++;
+        if(['anyone','domain'].includes(permission.type))restricted=false;
+        if(permission.type==='user'&&permission.emailAddress?.toLowerCase()===c.clientEmail.toLowerCase())serviceRole=permission.role;
+      }
+      page=data.nextPageToken;
+      if(page&&seen.has(page))throw Error('Drive permission pagination repeated');
+      seen.add(page);
+    }while(page);
+    return {folderId:meta.id,folderName:meta.name||null,canShare:true,restricted,serviceRole,permissionCount,permissionsChanged:false};
+  }
   async grant({email,releaseId}){
     const c=this.config;if(releaseId!==c.releaseId||!/^\S+@[^\s@]+\.[^\s@]+$/.test(email))throw Error('Release or recipient rejected');
     this.deadline=Date.now()+90000;const token=await this.token(),folder=encodeURIComponent(c.folderId);

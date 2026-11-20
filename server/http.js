@@ -70,6 +70,19 @@ export async function accessApi(request,env,fetcher=fetch){
   if(!readiness(env).review)bad('Private review dashboard is not configured',503);
   let actor;try{actor=await requireReviewer(request,env,fetcher);}catch{bad('Authorised administrator sign-in required',401);}
   const service=new ApprovalService(env.ACCESS_DB,new DriveDelivery({clientEmail:env.GOOGLE_CLIENT_EMAIL,privateKey:env.GOOGLE_PRIVATE_KEY,folderId:env.DRIVE_FOLDER_ID,releaseId:env.RELEASE_ID},fetcher),policy(env));
+  if(path==='/api/review/connection-check'&&request.method==='POST'){
+   requireSameOrigin(request);
+   if(!env.GOOGLE_CLIENT_EMAIL||!env.GOOGLE_PRIVATE_KEY||!env.DRIVE_FOLDER_ID)bad('Drive credentials are not configured',503);
+   try{
+    const drive=await service.drive.inspect();
+    await auditStatement(env.ACCESS_DB,{event:'drive_connection_checked',actor:actor.email,details:{release:env.RELEASE_ID,...drive}}).run();
+    return json({drive,configuration:readiness(env)});
+   }catch(error){
+    const code=/^[A-Z][A-Z0-9_]{1,60}$/.test(error.code||'')?error.code:'CONNECTION_UNCONFIRMED';
+    await auditStatement(env.ACCESS_DB,{event:'drive_connection_failed',actor:actor.email,details:{release:env.RELEASE_ID,error:code}}).run();
+    return json({error:'Drive connection check failed: '+code+'. No permissions were changed.'},502);
+   }
+  }
   if(path==='/api/review/requests'&&request.method==='GET'){
    const result=await env.ACCESS_DB.prepare('SELECT id,recipient_email,applicant_name,institution,status,created_at,reviewer_email,reviewed_at FROM access_requests ORDER BY created_at DESC LIMIT 250').all();
    return json({requests:result.results,actor:actor.email,delivery_enabled:readiness(env).delivery});

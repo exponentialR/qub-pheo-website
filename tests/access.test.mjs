@@ -37,3 +37,12 @@ test('different approved requests cannot mutate the same Drive release concurren
 });
 test('Google permission pagination is read before creating any grant',async()=>{const f=googleFixture();const previous=f.fetcher;const fetcher=async(url,options)=>{if(url.includes('/permissions?')&&!options?.method){f.calls.push({url,options});return url.includes('pageToken=next')?Response.json({permissions:[{id:'on-second-page',type:'user',role:'reader',emailAddress:'researcher@university.example'}]}):Response.json({permissions:[],nextPageToken:'next'});}return previous(url,options);};const result=await drive(fetcher).grant({email:'researcher@university.example',releaseId:policy.releaseId});assert.equal(result.permissionId,'on-second-page');assert.equal(result.existing,true);assert(!f.calls.some(c=>c.options?.method==='POST'&&c.url.includes('/permissions?')));});
 test('ambiguous Google create is reconciled on retry without duplicate creation',async()=>{const f=googleFixture(),previous=f.fetcher;let stored,creates=0;const fetcher=async(url,options={})=>{if(url.includes('/permissions?')){if(options.method==='POST'){creates++;stored={id:'created-before-timeout',...JSON.parse(options.body)};return new Response('{}',{status:503});}return Response.json({permissions:stored?[stored]:[]});}return previous(url,options);};const service=drive(fetcher);await assert.rejects(service.grant({email:'researcher@university.example',releaseId:policy.releaseId}));const result=await service.grant({email:'researcher@university.example',releaseId:policy.releaseId});assert.equal(result.existing,true);assert.equal(creates,1);});
+
+test('read-only connection check detects broad sharing and paginates without granting',async()=>{
+ const f=googleFixture(),previous=f.fetcher;let pages=0;const fetcher=async(url,options={})=>{
+  if(url.includes('/permissions?')){assert.notEqual(options.method,'POST');pages++;return pages===1?Response.json({permissions:[{type:'user',role:'writer',emailAddress:'service@example.iam.gserviceaccount.com'}],nextPageToken:'next'}):Response.json({permissions:[{type:'anyone',role:'reader'}]});}
+  return previous(url,options);
+ };
+ const result=await drive(fetcher).inspect();assert.equal(pages,2);assert.equal(result.restricted,false);assert.equal(result.serviceRole,'writer');assert.equal(result.permissionsChanged,false);
+ assert(!f.calls.some(c=>c.url.includes('/permissions?')&&c.options.method==='POST'));
+});

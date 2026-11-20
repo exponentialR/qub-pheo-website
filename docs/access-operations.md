@@ -179,3 +179,23 @@ new deployment before runtime validation.
 Live sign-in by both administrators and a genuine reviewed delivery pilot remain
 unverified. No applicant was invited or used as a test. Provider resource details
 and private setup evidence are recorded outside this public repository.
+
+### Credential and bot protection follow-up
+Sam confirms the Google private key is saved; the dashboard shows it as an
+encrypted Secret, without reading it back. A dedicated managed Turnstile widget
+was created using Cloudflare’s Spin dialog to avoid the broken manual custom-host
+entry. Its automatic local hostnames were then removed; only
+`qub-pheo.pages.dev` is authorised, with pre-clearance disabled. Its secret and
+a fresh 32-byte receipt/rate secret were stored encrypted, and its public sitekey
+was added to production configuration. No secrets enter source or artifacts.
+
+The admin dashboard now has **Check Drive connection**. This authenticated,
+same-origin operation checks Google authentication, the configured folder’s
+sharing capability and its ACL without creating/changing permissions. Results
+and safe failure codes are audited. It works with delivery disabled. Re-run it
+after key rotation or release-folder maintenance; broad-sharing warnings require
+owner investigation. A successful check does not prove notification delivery.
+
+The updated suite has 41 passing tests, including private diagnostic access,
+paused-delivery checks, ACL pagination and safe external failure reporting. A
+real admin login is still needed to run this check against production credentials.

@@ -141,3 +141,15 @@ new email service, auto-approval engine or full dataset migration. Dashboard
 requires human signature/identity review. Audit is append-only through the app
 and SQL triggers, not tamper-proof against infrastructure owners. Public sample
 playback remains static and unchanged.
+
+### Live verification refinement
+The saved private key cannot be read back from Cloudflare. To verify it without
+creating a test applicant or granting data access, add a private, same-origin
+POST connection check. It authenticates to Google, reads only the configured
+folder and its ACL, reports broad-sharing/service-role metadata and records the
+check in the existing ledger. The dashboard exposes a single explicit check
+button. No test grant, credential echo or public diagnostics endpoint.
+Criticism resolved: saved-secret presence alone does not establish valid Google
+authentication or actual sharing capability. Remaining uncertainty: real pilot
+delivery and Seán’s own sign-in. Correctness/alignment/security 9/10, simplicity
+and verification 8/10; reuses existing auth, Drive adapter and audit store.
