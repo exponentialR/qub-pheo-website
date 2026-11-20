@@ -118,3 +118,10 @@ npm run dev:access
 One build-only dependency (esbuild) bundles the Worker; it adds no runtime cloud
 service. Private small signed PDFs reside in D1, avoiding a new object-store or
 mail vendor. No applicant records or credentials belong in this repository.
+
+Historical signed agreements can be archived separately in the private dashboard.
+Their original PDF/hash/filename, reported approver and data sharer, known form
+date and actual import provenance are preserved. Unknown contacts or historical
+event dates stay unknown; archival imports never call Google’s sharing API. Apply
+`migrations/0002_historical_records.sql` to an existing v1 database before deploying
+this version. Signed documents and historical applicant metadata stay outside Git.

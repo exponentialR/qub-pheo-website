@@ -2,6 +2,7 @@ import {requireReviewer,requireSameOrigin,sha256,base64url} from './auth.js';
 import {DriveDelivery} from './drive.js';
 import {ApprovalService} from './approval.js';
 import {auditStatement} from './audit.js';
+import {HistoricalArchive,historicalMetadata} from './history.js';
 import AGREEMENT from '../config/agreement.json' with {type:'json'};
 export {AGREEMENT};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -29,7 +30,7 @@ async function receiptToken(id,key,secret){
 }
 async function submit(request,env,fetcher){
  if(!readiness(env).intake)bad('Online requests are not enabled. Please use the existing EULA email process.',503);
- const capacity=await env.ACCESS_DB.prepare('SELECT count(*) AS total FROM access_requests').first();if(capacity.total>=250)bad('Online request capacity reached; please use the email process.',429);
+ const capacity=await env.ACCESS_DB.prepare('SELECT (SELECT count(*) FROM access_requests)+(SELECT count(*) FROM historical_records) AS total').first();if(capacity.total>=250)bad('Online request capacity reached; please use the email process.',429);
  requireSameOrigin(request);if(new URL(request.url).origin!==env.PUBLIC_ORIGIN)bad('Unexpected request origin',403);
  const bytes=await boundedBody(request,MAX_PDF+40000);
  const form=await new Request(request.url,{method:'POST',headers:{'content-type':request.headers.get('content-type')||''},body:bytes}).formData();
@@ -50,7 +51,7 @@ async function submit(request,env,fetcher){
  const receiptHash=await sha256(token);
  await env.ACCESS_DB.batch([
   env.ACCESS_DB.prepare("INSERT INTO intake_rate_buckets(bucket,day,count) VALUES(?,?,1) ON CONFLICT(bucket) DO UPDATE SET count=count+1 WHERE count<5").bind(bucket,day),
-  env.ACCESS_DB.prepare("INSERT INTO access_requests(id,recipient_email,applicant_name,institution,intended_use,release_id,agreement_version,signature_reference,signature_sha256,signature_bytes,receipt_hash,agreement_sha256,created_at,submission_key) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE changes()=1 AND (SELECT count(*) FROM access_requests)<250").bind(id,email,name,institution,purpose,env.RELEASE_ID,AGREEMENT.version,'uploaded-pdf:'+id,signatureHash,pdf.buffer,receiptHash,AGREEMENT.sha256,now,keyHash),
+  env.ACCESS_DB.prepare("INSERT INTO access_requests(id,recipient_email,applicant_name,institution,intended_use,release_id,agreement_version,signature_reference,signature_sha256,signature_bytes,receipt_hash,agreement_sha256,created_at,submission_key) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE changes()=1 AND (SELECT count(*) FROM access_requests)+(SELECT count(*) FROM historical_records)<250").bind(id,email,name,institution,purpose,env.RELEASE_ID,AGREEMENT.version,'uploaded-pdf:'+id,signatureHash,pdf.buffer,receiptHash,AGREEMENT.sha256,now,keyHash),
   auditStatement(env.ACCESS_DB,{requestId:id,event:'request_submitted',actor:email,kind:'applicant_claimed',details:{signatureHash,agreementSha256:AGREEMENT.sha256,release:env.RELEASE_ID,institutionalIdentityVerified:false}},true)
  ]);
  const row=await env.ACCESS_DB.prepare('SELECT id FROM access_requests WHERE id=?').bind(id).first();if(!row)bad('Request capacity or daily limit reached. Please use the existing email process.',429);
@@ -71,6 +72,28 @@ export async function accessApi(request,env,fetcher=fetch){
   let actor;try{actor=await requireReviewer(request,env,fetcher);}catch(error){
    const reasons={'Reviewer authentication is not configured':'AUTH_CONFIG','Reviewer sign-in required':'AUTH_TOKEN_MISSING','Invalid reviewer token':'AUTH_TOKEN_INVALID','Reviewer signing keys unavailable':'AUTH_KEYS_UNAVAILABLE','Unknown reviewer signing key':'AUTH_KEY_UNKNOWN','Invalid reviewer signature':'AUTH_SIGNATURE_INVALID','Reviewer identity or token validity rejected':'AUTH_CLAIMS_REJECTED'};
    bad('Authorised administrator sign-in required ('+(reasons[error.message]||(/^AUTH_[A-Z_]+$/.test(error.code||'')?error.code:'AUTH_VALIDATION_ERROR'))+')',401);
+  }
+  if(path==='/api/review/historical'||path.startsWith('/api/review/historical/')){
+   const archive=new HistoricalArchive(env.ACCESS_DB);
+   if(path==='/api/review/historical'){
+    if(request.method==='GET')return json({records:await archive.list(),actor:actor.email});
+    if(request.method!=='POST')bad('Method not allowed',405);
+    requireSameOrigin(request);
+    const bytes=await boundedBody(request,MAX_PDF+40000);
+    const form=await new Request(request.url,{method:'POST',headers:{'content-type':request.headers.get('content-type')||''},body:bytes}).formData();
+    const result=await archive.import(form,actor);return json(result,result.replayed?200:201);
+   }
+   const match=path.match(/^\/api\/review\/historical\/([^/]+)(?:\/(evidence))?$/);
+   if(!match||!UUID.test(match[1]))bad('Not found',404);
+   if(request.method!=='GET')bad('Historical records cannot grant or retry access',405);
+   const [,id,action]=match,row=await archive.get(id);if(!row)bad('Not found',404);
+   if(action==='evidence'){
+    if(await sha256(new Uint8Array(row.signature_bytes))!==row.signature_sha256)bad('Historical PDF integrity check failed',500);
+    await auditStatement(env.ACCESS_DB,{event:'historical_eula_downloaded',actor:actor.email,details:{historicalId:id,documentSha256:row.signature_sha256}}).run();
+    return new Response(new Uint8Array(row.signature_bytes),{headers:{...HEADERS,'content-type':'application/octet-stream','content-disposition':`attachment; filename="historical-eula-${id}.pdf"`,'content-security-policy':"sandbox; default-src 'none'"}});
+   }
+   await auditStatement(env.ACCESS_DB,{event:'historical_record_viewed',actor:actor.email,details:{historicalId:id}}).run();
+   return json({record:historicalMetadata(row),events:await archive.events(id),actor:actor.email});
   }
   const service=new ApprovalService(env.ACCESS_DB,new DriveDelivery({clientEmail:env.GOOGLE_CLIENT_EMAIL,privateKey:env.GOOGLE_PRIVATE_KEY,folderId:env.DRIVE_FOLDER_ID,releaseId:env.RELEASE_ID},fetcher),policy(env));
   if(path==='/api/review/connection-check'&&request.method==='POST'){

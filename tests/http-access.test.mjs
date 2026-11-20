@@ -32,3 +32,35 @@ test('failed connection check exposes a safe code and changes no Drive permissio
  const response=await review(f,'connection-check',sam,{});assert.equal(response.status,502);assert.match((await response.json()).error,/GOOGLE_AUTH_401/);assert.equal(f.permissions.length,0);
  assert.equal(f.sqlite.prepare("SELECT count(*) AS n FROM access_events WHERE event='drive_connection_failed'").get().n,1);
 });
+function historicalSubmission({name='Historical Researcher',email='',documentDate='2025-04-12',pdf='%PDF-1.4\n'+'.'.repeat(200),confirmed=true}={}){
+ const form=new FormData();for(const [k,v]of Object.entries({name,email,institution:'',document_date:documentDate,approved_by:'Former Approver',approval_date:'',shared_by:'Former Data Custodian',sharing_date:'',source_reference:'Owner reports previous approval and delivery; original dates unknown.',notes:'Original PDF preserved',historical_confirmed:confirmed?'yes':''}))form.set(k,v);
+ form.set('signed_eula',new File([pdf],'original historical form.pdf',{type:'application/pdf'}));return form;
+}
+async function importHistorical(f,form,actor=sam,originHeader=origin){return accessApi(new Request(origin+'/api/review/historical',{method:'POST',headers:{'Cf-Access-Jwt-Assertion':await token(actor),Origin:originHeader},body:form}),f.env,f.fetcher);}
+test('historical archive preserves missing fields, original bytes and distinct importer attribution without Google calls',async()=>{
+ const f=fixture(),previous=f.fetcher;f.fetcher=async(url,options)=>{assert(url.endsWith('/cdn-cgi/access/certs'),'historical import must never call Google or Turnstile');return previous(url,options);};
+ f.env.DELIVERY_ENABLED='false';const response=await importHistorical(f,historicalSubmission());assert.equal(response.status,201);const {record,permissionsChanged}=await response.json();assert.equal(permissionsChanged,false);assert.equal(record.recipient_email,null);assert.equal(record.institution,null);assert.equal(record.approval_date,null);assert.equal(record.sharing_date,null);assert.equal(record.document_date,'2025-04-12');assert.equal(record.imported_by,sam);assert.equal(record.approved_by,'Former Approver');assert.equal(record.shared_by,'Former Data Custodian');assert(!('signature_bytes' in record));assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM access_requests').get().n,0);
+ const list=await (await review(f,'historical',sean)).json();assert.equal(list.records[0].id,record.id);
+ const detail=await (await review(f,'historical/'+record.id)).json();assert.equal(detail.record.original_filename,'original historical form.pdf');assert(detail.events.some(e=>e.event==='historical_record_imported'&&e.actor===sam&&JSON.parse(e.details_json).permissionsChanged===false));assert(!detail.events.some(e=>['approved','drive_reader_granted'].includes(e.event)));
+ const evidence=await review(f,'historical/'+record.id+'/evidence');assert.equal(evidence.status,200);assert.equal(await evidence.text(),'%PDF-1.4\n'+'.'.repeat(200));assert.match(evidence.headers.get('cache-control'),/no-store/);assert.equal(f.permissions.length,0);
+});
+test('historical imports are idempotent, immutable and cannot silently replace attribution',async()=>{
+ const f=fixture();const first=await (await importHistorical(f,historicalSubmission())).json();const second=await (await importHistorical(f,historicalSubmission())).json();assert.equal(first.record.id,second.record.id);assert.equal(second.replayed,true);assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM historical_records').get().n,1);
+ assert.equal((await importHistorical(f,historicalSubmission({name:'Different Person'}))).status,409);assert.equal(f.sqlite.prepare('SELECT applicant_name FROM historical_records').get().applicant_name,'Historical Researcher');
+ assert.throws(()=>f.sqlite.exec("UPDATE historical_records SET approved_by='New Approver'"));assert.throws(()=>f.sqlite.exec('DELETE FROM historical_records'));assert.equal(f.sqlite.prepare("SELECT count(*) AS n FROM access_events WHERE event='historical_record_imported'").get().n,1);
+});
+test('historical archive requires administrator auth, same origin, valid evidence/date and confirmation',async()=>{
+ const f=fixture();assert.equal((await importHistorical(f,historicalSubmission(),'intruder@example.org')).status,401);assert.equal((await importHistorical(f,historicalSubmission(),sam,'https://untrusted.example')).status,403);
+ for(const options of [{confirmed:false},{documentDate:'2025-02-30'},{email:'invalid'},{pdf:'not a PDF'.repeat(30)}])assert.equal((await importHistorical(f,historicalSubmission(options))).status,400);
+ assert.equal((await accessApi(new Request(origin+'/api/review/historical'),f.env,f.fetcher)).status,401);assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM historical_records').get().n,0);
+});
+test('historical records have no approval, delivery or retry route',async()=>{
+ const f=fixture();const {record}=await (await importHistorical(f,historicalSubmission())).json();for(const action of ['decision','retry','deliver'])assert.equal((await review(f,'historical/'+record.id+'/'+action,sam,{decision:'approve',signatureChecked:true,identityChecked:true})).status,404);assert.equal(f.permissions.length,0);
+});
+test('concurrent historical imports converge on one document and audit event',async()=>{
+ const f=fixture();const responses=await Promise.all([importHistorical(f,historicalSubmission()),importHistorical(f,historicalSubmission())]);assert.deepEqual(responses.map(r=>r.status).sort(),[200,201]);const values=await Promise.all(responses.map(r=>r.json()));assert.equal(values[0].record.id,values[1].record.id);assert.equal(f.sqlite.prepare("SELECT count(*) AS n FROM access_events WHERE event='historical_record_imported'").get().n,1);
+});
+test('historical PDFs share the public intake storage cap',async()=>{
+ const f=fixture();const {record}=await (await importHistorical(f,historicalSubmission())).json();f.sqlite.exec("INSERT INTO access_requests(id,recipient_email,applicant_name,institution,intended_use,release_id,agreement_version,signature_reference,created_at) SELECT 'seed','seed@university.example','Seed','University','Research','v1','v1','seed','2025-01-01'");f.sqlite.exec("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<248) INSERT INTO access_requests(id,recipient_email,applicant_name,institution,intended_use,release_id,agreement_version,signature_reference,created_at) SELECT 'seed-'||x,'seed@university.example','Seed','University','Research','v1','v1','seed','2025-01-01' FROM n");
+ assert.equal((await accessApi(submission(),f.env,f.fetcher)).status,429);assert.equal((await importHistorical(f,historicalSubmission({pdf:'%PDF-1.4\n'+'different'.repeat(40)}))).status,429);assert.equal((await (await importHistorical(f,historicalSubmission())).json()).record.id,record.id);
+});
