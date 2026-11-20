@@ -92,3 +92,16 @@ assertion requires separately recorded evidence rather than overwriting it.
 Original approval/sharing dates and missing contact details remain unknown, as
 required. No remaining implementation blocker for this historical-import task.
 The separate first real new-request delivery pilot remains unverified.
+
+## Supplementary contact addresses
+Sam subsequently supplied institutional and alternate email addresses for all four
+records. Preserve immutable original records and append `historical_contacts_recorded`
+events with classification, source, authenticated recorder/time and explicit lack
+of mailbox/Drive-account verification. Display these supplementary contacts in
+the dashboard. Do not replace the PDF’s unknown fields, infer a historical grant
+recipient or invoke sharing. Reuse the existing audit ledger; no migration, new
+service or dependency. Main criticism resolved: updating immutable archive rows
+would erase the distinction between original evidence and later owner-supplied
+information. Scores: correctness/alignment/security 9; simplicity/verification 8.
+Acceptance: seven addresses on the four correct records, original hashes intact,
+append-only attribution, no Google call or invitation.

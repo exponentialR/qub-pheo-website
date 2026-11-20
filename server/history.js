@@ -22,6 +22,28 @@ export class HistoricalArchive {
   get(id){return this.db.prepare('SELECT * FROM historical_records WHERE id=?').bind(id).first();}
   async list(){return (await this.db.prepare('SELECT id,applicant_name,document_date,approved_by,shared_by,original_filename,imported_at FROM historical_records ORDER BY COALESCE(document_date,\'\') DESC,imported_at DESC LIMIT 250').all()).results;}
   async events(id){return (await this.db.prepare("SELECT * FROM access_events WHERE json_extract(details_json,'$.historicalId')=? ORDER BY id").bind(id).all()).results;}
+  async contacts(id){
+    const event=await this.db.prepare("SELECT actor,created_at,details_json FROM access_events WHERE event='historical_contacts_recorded' AND json_extract(details_json,'$.historicalId')=? ORDER BY id DESC LIMIT 1").bind(id).first();
+    if(!event)return null;
+    const details=JSON.parse(event.details_json);return {contacts:details.contacts,source:details.source,recorded_by:event.actor,recorded_at:event.created_at,verified:false};
+  }
+  async recordContacts(id,value,actor){
+    if(!await this.get(id))invalid('Historical record not found',404);
+    if(!Array.isArray(value.contacts)||value.contacts.length<1||value.contacts.length>5)invalid('Provide between one and five contact addresses');
+    const contacts=value.contacts.map(c=>{
+      if(!['institutional','alternate'].includes(c?.kind)||typeof c.email!=='string')invalid('Invalid contact classification');
+      const email=c.email.trim().toLowerCase();
+      if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||/[\x00-\x1f\x7f]/.test(email))invalid('Invalid contact email');
+      return {kind:c.kind,email};
+    }).sort((a,b)=>a.kind.localeCompare(b.kind)||a.email.localeCompare(b.email));
+    if(new Set(contacts.map(c=>c.email)).size!==contacts.length)invalid('Duplicate contact email');
+    const source=typeof value.source==='string'?value.source.trim():'';
+    if(!source||source.length>1000||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(source))invalid('Contact source is required');
+    const previous=await this.contacts(id);
+    if(previous&&JSON.stringify(previous.contacts)===JSON.stringify(contacts)&&previous.source===source)return {annotation:previous,replayed:true,permissionsChanged:false};
+    await auditStatement(this.db,{event:'historical_contacts_recorded',actor:actor.email,details:{historicalId:id,contacts,source,mailboxOwnershipVerified:false,driveAccountVerified:false,permissionsChanged:false}}).run();
+    return {annotation:await this.contacts(id),replayed:false,permissionsChanged:false};
+  }
   async import(form,actor){
     if(form.get('historical_confirmed')!=='yes')invalid('Confirm that this is a historical record, not a new approval or delivery');
     const values={

@@ -83,17 +83,20 @@ export async function accessApi(request,env,fetcher=fetch){
     const form=await new Request(request.url,{method:'POST',headers:{'content-type':request.headers.get('content-type')||''},body:bytes}).formData();
     const result=await archive.import(form,actor);return json(result,result.replayed?200:201);
    }
-   const match=path.match(/^\/api\/review\/historical\/([^/]+)(?:\/(evidence))?$/);
+   const match=path.match(/^\/api\/review\/historical\/([^/]+)(?:\/(evidence|contacts))?$/);
    if(!match||!UUID.test(match[1]))bad('Not found',404);
-   if(request.method!=='GET')bad('Historical records cannot grant or retry access',405);
    const [,id,action]=match,row=await archive.get(id);if(!row)bad('Not found',404);
+   if(action==='contacts'&&request.method==='POST'){
+    requireSameOrigin(request);return json(await archive.recordContacts(id,await requestJson(request),actor));
+   }
+   if(request.method!=='GET')bad('Historical records cannot grant or retry access',405);
    if(action==='evidence'){
     if(await sha256(new Uint8Array(row.signature_bytes))!==row.signature_sha256)bad('Historical PDF integrity check failed',500);
     await auditStatement(env.ACCESS_DB,{event:'historical_eula_downloaded',actor:actor.email,details:{historicalId:id,documentSha256:row.signature_sha256}}).run();
     return new Response(new Uint8Array(row.signature_bytes),{headers:{...HEADERS,'content-type':'application/octet-stream','content-disposition':`attachment; filename="historical-eula-${id}.pdf"`,'content-security-policy':"sandbox; default-src 'none'"}});
    }
    await auditStatement(env.ACCESS_DB,{event:'historical_record_viewed',actor:actor.email,details:{historicalId:id}}).run();
-   return json({record:historicalMetadata(row),events:await archive.events(id),actor:actor.email});
+   return json({record:historicalMetadata(row),contact_annotation:await archive.contacts(id),events:await archive.events(id),actor:actor.email});
   }
   const service=new ApprovalService(env.ACCESS_DB,new DriveDelivery({clientEmail:env.GOOGLE_CLIENT_EMAIL,privateKey:env.GOOGLE_PRIVATE_KEY,folderId:env.DRIVE_FOLDER_ID,releaseId:env.RELEASE_ID},fetcher),policy(env));
   if(path==='/api/review/connection-check'&&request.method==='POST'){
