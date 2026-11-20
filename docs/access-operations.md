@@ -225,3 +225,22 @@ four archive imports and four downloads, with no new approval/grant events.
 Public intake remains active and unauthenticated deployment-alias archive API
 access is rejected. 52 tests pass; the real archived records and signed forms are
 not shipped in source or the public deployment package.
+
+### Supplementary historical contacts
+
+Select a historical record and use **Reported contact addresses** to record
+institutional and alternate emails with their source. This appends a
+`historical_contacts_recorded` audit event; it never changes the immutable
+original record/PDF or calls Google. The dashboard shows the latest annotation
+and its authenticated recorder/time while retaining the original unknown contact
+field. Earlier annotations remain in audit exports. Identical sequential saves
+are idempotent. These addresses do not establish mailbox ownership or identify
+the account that historically received Drive access.
+
+Verified deployment: `1b458d0c-bb16-460e-aca2-9efde3546d17`, source `e252450`,
+907 entries, archive SHA-256
+`b5f3d5a4f52e2b9771732e8bf0d800f5bfbac7a711b8e90fdb1d0b015be005c6`.
+Seven supplied addresses on four historical records were checked against the
+live UI and four attributed audit entries (snapshot 44). Original PDF hashes
+remain unchanged; no new approval, invitation or permission grant was made.
+54 tests pass. Applicant contact values are private and excluded from this repo.

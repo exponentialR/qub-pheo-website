@@ -105,3 +105,14 @@ would erase the distinction between original evidence and later owner-supplied
 information. Scores: correctness/alignment/security 9; simplicity/verification 8.
 Acceptance: seven addresses on the four correct records, original hashes intact,
 append-only attribution, no Google call or invitation.
+
+Completed: seven supplied addresses are visible on the four correct historical
+records in production deployment `1b458d0c-bb16-460e-aca2-9efde3546d17`
+(source `e252450`). Live audit snapshot 44 contains exactly four supplementary
+contact events, each attributed to the authenticated administrator and supplied
+source, with explicit unverified identity and unchanged-permission flags. Original
+PDF hashes remain unchanged. No approval/grant event was created. 54 tests pass;
+frontend syntax, Worker build and all 907 package entries were verified. Private
+contact values, screenshots and export remain outside Git. No migration or new
+dependency was needed. Mailbox ownership and original recipient account remain
+unverified, as intended.
