@@ -1,11 +1,14 @@
 # Access workflow: deployment and operations
 
 ## Current status
-Implemented, locally verified and **deployed with intake/delivery disabled**.
-The private D1 schema/binding, two-person Access app and restricted Google service
-identity have been created with Sam’s explicit approval. Existing email handling
-remains the fallback. Do not claim unattended delivery until an actual approved
-pilot confirms reviewer sign-in, the correct Drive ACL and notification.
+**Live:** signed-PDF intake, private review dashboard, audit export and the
+human-approved Drive delivery path are enabled. Sam’s actual administrator login,
+Google authentication and sharing-capable access to the restricted release folder
+have been verified. No applicant grant was created during testing.
+
+Still unverified: Seán’s own sign-in, and the first genuine signed request through
+approval, recipient access and receipt of Google’s sharing notification. Do not
+represent the read-only connection check as proof of that complete delivery pilot.
 
 ```mermaid
 flowchart LR
@@ -154,86 +157,42 @@ It never calls Google or sends emails and is not bundled/deployed. Use fixture
 identities/documents only. It deliberately auto-authenticates a **local fixture**
 administrator to exercise the UI; production has no such bypass.
 
-## Setup checkpoint — 20 November 2026
+## Production verification — 20 November 2026
 
-Production deployment `da966974-378c-49f8-9837-e8b93149e1bc` contains the
-verified 907-file package from source commit `66f4ffd`. All 20 approved examples
-remain included. The live config reports intake disabled; `/request` presents the
-email fallback. Anonymous `/admin` and `/api/review/requests` reach the Access
-sign-in gate. The configured allowlist has exactly the two nominated reviewers.
+- Deployment: `f32d778c-b961-40ce-a763-72bbbb4b6b58`, source implementation
+  `4f0c480`; 907 allowlisted public files, including all 20 approved examples.
+- Archive SHA-256: `bfe0d9f2d304673b19e6e6cadc521497d08f8acfbcbe8f4f2c6e07202d336622`.
+- `REQUESTS_ENABLED`, `DELIVERY_ENABLED` and `SCOPE_CONFIRMED` are enabled.
+- D1 has the four application tables, status index and all three audit/evidence
+  triggers. The Google service identity has no project roles or domain delegation;
+  its only assigned Drive scope is the approved release folder, with Editor rights.
+- Real admin login is verified for Sam. The private connection check confirms
+  Google authentication, the expected folder, sharing capability, restricted ACL
+  and service role `writer`, with `permissionsChanged: false`.
+- The public request form renders with signed-PDF fields, identity/purpose fields,
+  explicit manual review and a successful production Turnstile check. The widget
+  permits only `qub-pheo.pages.dev`, with managed mode and no pre-clearance.
+- Audit export was downloaded from real D1 and verified. Setup failures and
+  successful connection checks are attributed to the authenticated administrator;
+  no applicant decisions or grants were created as tests.
+- The direct deployment URL rejects review API requests without an Access JWT,
+  even in a browser signed into the production website. Public samples remain
+  independent of the private review API.
+- Local verification: **46 passing tests**, plus successful Worker build and
+  checksum verification of every deployment entry. No secrets, signed applicant
+  documents, videos, landmarks or private records entered Git.
 
-A new empty D1 database now contains the four application tables, status index
-and all three evidence/audit triggers. It is bound as `ACCESS_DB`. The dedicated
-Google service account was created in the existing research Drive API project
-with no project roles or domain-wide delegation, and added as Editor to only
-the approved release folder. Drive's general link remains Restricted; existing
-collaborator permissions were preserved. The Drive API was already enabled.
+The first live sign-in exposed a Workers runtime difference: `redirect: 'error'`
+is unsupported. JWKS, Google and Turnstile calls now use `manual` and reject
+redirect responses. The adapter preserves the native fetch calling convention.
+Safe phase codes identify configuration/network failures without exposing secrets.
+The private key accepts original Google JSON only for the exact configured
+service email, or its quoted/plain PEM; the owner corrected the saved value and
+the subsequent live connection check passed. No key was read back by the agent.
 
-Remaining setup: the owner must create and enter `GOOGLE_PRIVATE_KEY` directly
-in Cloudflare Secrets. The credential creation dialog and correctly named Secret
-field were left ready for the owner. No service key has been created by the agent.
-A fresh Turnstile widget is still required: the current dashboard form reports
-“No results” and does not add the valid custom `qub-pheo.pages.dev` hostname. No
-other widget was reused, no extra hostname added, and bot verification was not
-removed. `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` and `INTAKE_RATE_SECRET` remain
-unconfigured. Both activation flags remain false. Changing settings requires a
-new deployment before runtime validation.
-
-Live sign-in by both administrators and a genuine reviewed delivery pilot remain
-unverified. No applicant was invited or used as a test. Provider resource details
-and private setup evidence are recorded outside this public repository.
-
-### Credential and bot protection follow-up
-Sam confirms the Google private key is saved; the dashboard shows it as an
-encrypted Secret, without reading it back. A dedicated managed Turnstile widget
-was created using Cloudflare’s Spin dialog to avoid the broken manual custom-host
-entry. Its automatic local hostnames were then removed; only
-`qub-pheo.pages.dev` is authorised, with pre-clearance disabled. Its secret and
-a fresh 32-byte receipt/rate secret were stored encrypted, and its public sitekey
-was added to production configuration. No secrets enter source or artifacts.
-
-The admin dashboard now has **Check Drive connection**. This authenticated,
-same-origin operation checks Google authentication, the configured folder’s
-sharing capability and its ACL without creating/changing permissions. Results
-and safe failure codes are audited. It works with delivery disabled. Re-run it
-after key rotation or release-folder maintenance; broad-sharing warnings require
-owner investigation. A successful check does not prove notification delivery.
-
-The updated suite has 41 passing tests, including private diagnostic access,
-paused-delivery checks, ACL pagination and safe external failure reporting. The
-subsequent live checkpoint below records the real admin-session result.
-
-Production follow-up deployment: `def18a57-e614-4885-8929-ab5be6e41ff9` from
-source `c40015c`, with the saved encrypted Google key, Turnstile settings and
-receipt/rate salt. All 907 package entries verified (SHA-256
-`fb8d86d807665c1dea58066f86dede15932a438af7022fb881bd443fff651cc5`).
-Anonymous access to the new diagnostic reaches the Access gate. Live public
-config still reports disabled intake. Sam’s one-time-PIN login is pending;
-therefore encrypted-key presence is verified, but actual Google authentication
-and the live private diagnostic are not yet claimed successful.
-
-### Live authentication findings
-Sam’s real Access OTP session is now verified. The application originally failed
-while fetching Access signing keys because Workers rejects `redirect: 'error'`.
-Requests now use `manual` and reject non-OK responses, preserving no-redirect
-credential handling. Safe stage codes expose no tokens/claims/secrets.
-
-The live read-only Google check reports `PRIVATE_KEY_FORMAT` for the saved value.
-The adapter now preserves the fetch function’s unbound calling convention and
-accepts original Google JSON (with exact configured service-identity matching),
-quoted PEM, or plain PEM. It never reads back a Cloudflare secret or switches the
-configured account. Updated local suite: 46 tests pass, including redirect
-rejection, native-fetch receiver behaviour and credential-format/identity checks.
-No applicant access has been created during verification.
-
-Latest live checkpoint: deployment `09fcea00-752f-4cce-8ab8-0b7af0685806`,
-source `4f0c480`, 907 verified files, archive SHA-256
-`bfe0d9f2d304673b19e6e6cadc521497d08f8acfbcbe8f4f2c6e07202d336622`.
-Sam’s real admin sign-in and live audit export are verified. The export contained
-four `drive_connection_failed` events and no applicant decisions/grants. The
-Google check still reports `PRIVATE_KEY_FORMAT` after accepting valid original
-JSON/quoted/plain PEM. The owner must replace the malformed saved value with the
-entire original downloaded Google JSON, unchanged, in the existing Secret field.
-The blank replacement field is prepared; the agent has not read any private key.
-After the owner saves it, redeploy, run the private connection check and retain
-its result before enabling intake/delivery. Both flags remain false.
+To pause safely, set `REQUESTS_ENABLED=false` (and, if required,
+`DELIVERY_ENABLED=false`) and redeploy the verified full package. This does not
+revoke existing Drive grants. Re-enable only after the read-only connection check
+passes. New requests appear in the admin dashboard; this version does not send
+separate pending-request alert emails. Google sends invitations for new approved
+grants, and applicants can retain their private receipt URL.

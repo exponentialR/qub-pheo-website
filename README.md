@@ -22,9 +22,9 @@ study protocol, assembly tasks, preprocessing, evaluation and limitations.
 are committed.** The public website serves 20 approved examples separately from
 Git. Full dataset delivery stays on Drive, subject to the official EULA and
 approval from Seán McLoone or Samuel Adebayo. This code repository does not change dataset permissions.
-Signed-PDF intake, private admin review, audit export and approved Drive delivery
-are implemented, but live activation requires the private backend configuration
-and a genuine approved pilot. See [access operations](docs/access-operations.md).
+Signed-PDF intake, private admin review, audit export and the approved Drive
+delivery path are live. Sam’s admin login and the restricted Google connection
+are verified; the first genuine approved delivery remains a pilot check. See [access operations](docs/access-operations.md).
 
 ## Local development
 
@@ -87,8 +87,8 @@ Cloudflare publishing. Pages serves sample files as static assets, without R2.
 No new paid plan or domain is required for this deployment. The package remains
 below the dashboard's 1,000-file / 25 MiB-per-file limits and the 8 GB sample budget.
 
-The access API remains closed until its private database, administrator sign-in,
-bot protection and restricted Google identity are configured. The legacy gated
+The access API is configured with a private database, administrator sign-in,
+bot protection and a Google identity scoped to the approved release folder. The legacy gated
 media API remains closed. Public examples live under `/samples/v1/`; they do not unlock the
 full dataset or bypass the EULA process.
 
@@ -106,8 +106,9 @@ inspect document hashes, reconcile approved delivery failures and export the ful
 audit snapshot. Pending or denied requests cannot create Drive permissions.
 New grants are individual readers; existing permissions are preserved.
 
-Production intake is disabled until the setup described in
-[access operations](docs/access-operations.md) is complete. The public sample
+Production intake is enabled. See
+[access operations](docs/access-operations.md) for verified state, remaining pilot
+checks and safe pause/recovery. The public sample
 explorer remains independent. For a safe fixture-only UI test, run:
 
 ```bash

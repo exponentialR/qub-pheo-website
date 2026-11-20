@@ -101,7 +101,9 @@ Implementation can proceed; live activation cannot be asserted yet.
 - [x] Sam approved the scoped setup.
 - [x] Private D1/schema/binding, two-person Access policy and Google identity/folder grant configured.
 - [x] Disabled backend deployed; anonymous admin/API gates and public fallback verified.
-- [ ] Google private key, Turnstile and rate secret configured; runtime verified.
+- [x] Google private key, Turnstile and rate secret configured; runtime verified.
+- [x] Sam’s real admin login, Google read-only connection and D1 audit export verified.
+- [x] Production intake/delivery enabled; public Turnstile succeeds and deployment aliases reject unauthenticated review requests.
 - [ ] Live pilot approved by an authorised administrator and verified.
 Not complete: no real application records collected or applicant permissions granted. The approved delivery identity now has the explicitly authorised Editor role on the release folder.
 
@@ -175,3 +177,13 @@ the original JSON only for the configured service identity; its live format chec
 still fails. Do not read back or log the secret, grant test access, or enable
 intake based only on configuration presence. All independent code/testing,
 packaging and deployment work is saved. 46 tests pass.
+
+Final production checkpoint: the owner replaced the malformed saved credential;
+the Google read-only check now passes, confirming the intended folder, restricted
+ACL and writer service role, with no permissions changed. Production flags are
+enabled in deployment `f32d778c-b961-40ce-a763-72bbbb4b6b58`. The public form and
+Turnstile success were visually verified. The audit export works against real D1.
+No applicant was invited or used as a fixture. Implementation has 46 passing tests.
+Remaining verification is external: Seán’s sign-in and a genuine request approved
+by either administrator, checking recipient ACL, child-file access and notification.
+Current runbook supersedes earlier blocked setup checkpoints in this plan.
