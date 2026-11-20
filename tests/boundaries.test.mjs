@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {frameAtTime,safePath} from '../public/timing.js';
-import worker from '../public/_worker.js';
+import worker from '../server/worker.js';
 test('nearest presentation timestamp ties prefer earlier frame',()=>{assert.equal(frameAtTime([0,40,80],60),1);assert.equal(frameAtTime([0,40,80],61),2);});
 test('no extrapolation outside frame coverage',()=>{assert.equal(frameAtTime([0,40,80],101),null);assert.equal(frameAtTime([0,40,80],-21),null);assert.equal(frameAtTime([],0),null);});
 test('variable frame intervals retain nearest PTS semantics',()=>{assert.equal(frameAtTime([0,17,68,102],56),2);assert.equal(frameAtTime([0],0),0);assert.equal(frameAtTime([0],1),null);});

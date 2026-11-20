@@ -34,3 +34,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+.dev.vars
+.dev.vars.*
+*.sqlite
+*.sqlite3
+*.db
+/private/
+/evidence/
+signed-*.pdf
