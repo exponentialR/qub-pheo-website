@@ -12,12 +12,12 @@ export class DriveDelivery {
     const now=Math.floor(Date.now()/1000);
     const data=base64url(encoder.encode(JSON.stringify({alg:'RS256',typ:'JWT'})))+'.'+base64url(encoder.encode(JSON.stringify({iss:c.clientEmail,scope:'https://www.googleapis.com/auth/drive',aud:'https://oauth2.googleapis.com/token',iat:now,exp:now+300})));
     const assertion=data+'.'+base64url(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',key,encoder.encode(data)));
-    const response=await this.fetcher('https://oauth2.googleapis.com/token',{signal:this.timeout(),method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion}),redirect:'error'});
+    const response=await this.fetcher('https://oauth2.googleapis.com/token',{signal:this.timeout(),method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion}),redirect:'manual'});
     if(!response.ok)throw failure('GOOGLE_AUTH_'+response.status,'Google service authentication failed');
     const value=await response.json();if(typeof value.access_token!=='string'||!value.access_token)throw Error('Google returned no access token');return value.access_token;
   }
   async api(path,token,options={}){
-    const response=await this.fetcher('https://www.googleapis.com/drive/v3/'+path,{...options,signal:this.timeout(),headers:{Authorization:'Bearer '+token,'content-type':'application/json',...options.headers},redirect:'error'});
+    const response=await this.fetcher('https://www.googleapis.com/drive/v3/'+path,{...options,signal:this.timeout(),headers:{Authorization:'Bearer '+token,'content-type':'application/json',...options.headers},redirect:'manual'});
     if(!response.ok)throw failure('DRIVE_HTTP_'+response.status,'Drive request failed ('+response.status+')');return response.json();
   }
   async inspect(){

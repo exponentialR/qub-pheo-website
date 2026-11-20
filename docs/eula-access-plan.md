@@ -153,3 +153,18 @@ Criticism resolved: saved-secret presence alone does not establish valid Google
 authentication or actual sharing capability. Remaining uncertainty: real pilot
 delivery and Seán’s own sign-in. Correctness/alignment/security 9/10, simplicity
 and verification 8/10; reuses existing auth, Drive adapter and audit store.
+
+### Real sign-in regression and runtime fix
+Sam completed the Access OTP. The edge gate admitted him, but the application
+returned an authentication error. Safe stage diagnostics isolated `AUTH_KEY_FETCH`.
+Current Cloudflare runtime documentation confirms `redirect: 'error'` is not
+implemented and throws a TypeError before the request is sent. Node/mock tests
+had accepted it, exposing a gap in runtime-contract coverage.
+
+Replace that mode with `manual` for JWKS, Google OAuth/Drive and Turnstile calls;
+existing response checks reject redirects. Do not follow credential-bearing
+redirects, accept unverified identity headers or weaken JWT validation. Preserve
+bounded diagnostic codes without exposing tokens/claims/secrets. Added regression
+coverage verifies the supported request mode and rejection of redirect responses.
+43 tests pass. Live sign-in/connection verification follows deployment.
+Source: https://developers.cloudflare.com/workers/runtime-apis/request/

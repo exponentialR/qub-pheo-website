@@ -40,7 +40,7 @@ async function submit(request,env,fetcher){
  if(form.get('agreement_version')!==AGREEMENT.version||form.get('acknowledged')!=='yes')bad('Please read the current official agreement and attach its completed signed PDF');
  const file=form.get('signed_eula');if(!file||typeof file.arrayBuffer!=='function'||file.size<100||file.size>MAX_PDF)bad('A signed PDF of at most 1 MB is required');
  const pdf=new Uint8Array(await file.arrayBuffer());if(new TextDecoder().decode(pdf.slice(0,5))!=='%PDF-')bad('The attachment must be a PDF');
- const response=await fetcher('https://challenges.cloudflare.com/turnstile/v0/siteverify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({secret:env.TURNSTILE_SECRET_KEY,response:String(form.get('cf-turnstile-response')||'')}),signal:AbortSignal.timeout(15000)});
+ const response=await fetcher('https://challenges.cloudflare.com/turnstile/v0/siteverify',{redirect:'manual',method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({secret:env.TURNSTILE_SECRET_KEY,response:String(form.get('cf-turnstile-response')||'')}),signal:AbortSignal.timeout(15000)});
  const challenge=await response.json();if(!response.ok||!challenge.success||challenge.hostname!==new URL(env.PUBLIC_ORIGIN).hostname||challenge.action!=='eula-request')bad('Bot verification failed; please try again',403);
  const signatureHash=await sha256(pdf),keyHash=await sha256(submissionKey);
  const prior=await env.ACCESS_DB.prepare('SELECT id,recipient_email,signature_sha256,release_id,agreement_version,status FROM access_requests WHERE submission_key=?').bind(keyHash).first();
@@ -68,7 +68,10 @@ export async function accessApi(request,env,fetcher=fetch){
   }
   if(!path.startsWith('/api/review/'))return null;
   if(!readiness(env).review)bad('Private review dashboard is not configured',503);
-  let actor;try{actor=await requireReviewer(request,env,fetcher);}catch{bad('Authorised administrator sign-in required',401);}
+  let actor;try{actor=await requireReviewer(request,env,fetcher);}catch(error){
+   const reasons={'Reviewer authentication is not configured':'AUTH_CONFIG','Reviewer sign-in required':'AUTH_TOKEN_MISSING','Invalid reviewer token':'AUTH_TOKEN_INVALID','Reviewer signing keys unavailable':'AUTH_KEYS_UNAVAILABLE','Unknown reviewer signing key':'AUTH_KEY_UNKNOWN','Invalid reviewer signature':'AUTH_SIGNATURE_INVALID','Reviewer identity or token validity rejected':'AUTH_CLAIMS_REJECTED'};
+   bad('Authorised administrator sign-in required ('+(reasons[error.message]||(/^AUTH_[A-Z_]+$/.test(error.code||'')?error.code:'AUTH_VALIDATION_ERROR'))+')',401);
+  }
   const service=new ApprovalService(env.ACCESS_DB,new DriveDelivery({clientEmail:env.GOOGLE_CLIENT_EMAIL,privateKey:env.GOOGLE_PRIVATE_KEY,folderId:env.DRIVE_FOLDER_ID,releaseId:env.RELEASE_ID},fetcher),policy(env));
   if(path==='/api/review/connection-check'&&request.method==='POST'){
    requireSameOrigin(request);

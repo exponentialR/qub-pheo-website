@@ -46,3 +46,15 @@ test('read-only connection check detects broad sharing and paginates without gra
  const result=await drive(fetcher).inspect();assert.equal(pages,2);assert.equal(result.restricted,false);assert.equal(result.serviceRole,'writer');assert.equal(result.permissionsChanged,false);
  assert(!f.calls.some(c=>c.url.includes('/permissions?')&&c.options.method==='POST'));
 });
+
+test('Workers-compatible manual redirects validate Access and reject key redirects',async()=>{
+ const request=new Request('https://portal.example/api/review',{headers:{'Cf-Access-Jwt-Assertion':await jwt()}});
+ const actor=await requireReviewer(request,authEnv,async(url,options)=>{assert.equal(options.redirect,'manual');return keyFetch();});assert.equal(actor.email,reviewer.email);
+ await assert.rejects(requireReviewer(request,authEnv,async(url,options)=>{assert.equal(options.redirect,'manual');return new Response(null,{status:302,headers:{Location:'https://untrusted.example/keys'}});}));
+});
+test('Google authentication and API use manual redirects and never follow them',async()=>{
+ const f=googleFixture(),calls=[];const fetcher=async(url,options={})=>{assert.equal(options.redirect,'manual');calls.push(url);return f.fetcher(url,options);};
+ await drive(fetcher).inspect();assert(calls.length>=3);
+ const redirects=[];await assert.rejects(drive(async(url,options)=>{assert.equal(options.redirect,'manual');redirects.push(url);return new Response(null,{status:307,headers:{Location:'https://untrusted.example/token'}});}).inspect());
+ assert.deepEqual(redirects,['https://oauth2.googleapis.com/token']);
+});
