@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {frameAtTime,safePath} from '../public/timing.js';
+import worker from '../public/_worker.js';
+test('nearest presentation timestamp ties prefer earlier frame',()=>{assert.equal(frameAtTime([0,40,80],60),1);assert.equal(frameAtTime([0,40,80],61),2);});
+test('no extrapolation outside frame coverage',()=>{assert.equal(frameAtTime([0,40,80],101),null);assert.equal(frameAtTime([0,40,80],-21),null);assert.equal(frameAtTime([],0),null);});
+test('variable frame intervals retain nearest PTS semantics',()=>{assert.equal(frameAtTime([0,17,68,102],56),2);assert.equal(frameAtTime([0],0),0);assert.equal(frameAtTime([0],1),null);});
+test('sample paths cannot escape or load remote origins',()=>{for(const p of ['../secret','/data','https://x/y','a\\b','a/%2e%2e/b','a//b','a/./b'])assert.equal(safePath(p),false);assert.equal(safePath('sample-01/CAM_UL/frames-000000.json'),true);});
+test('unconfigured protected routes fail closed regardless of caller claims',async()=>{for(const path of ['catalog.json','sample-01/CAM_UL/preview.mp4','../secret']){const r=await worker.fetch(new Request('https://example.org/api/media/'+path+'?approved=true',{headers:{Authorization:'Bearer fake','Range':'bytes=0-100','Cf-Access-Authenticated-User-Email':'fake@example.org'}}),{});assert.equal(r.status,503);assert.equal(r.headers.get('cache-control'),'no-store');}});
+test('ordinary assets use only static binding',async()=>{const r=await worker.fetch(new Request('https://example.org/'),{ASSETS:{fetch:async()=>new Response('public')}});assert.equal(await r.text(),'public');});

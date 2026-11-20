@@ -1,0 +1,36 @@
+# Dataset and generated deployment payloads stay outside Git.
+/public/samples/
+/samples/
+/data/
+/videos/
+/landmarks/
+/dist/
+/outputs/
+*.mp4
+*.MP4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.pkl
+*.pickle
+catalog.json
+frames-*.json
+*.zip
+*.tar
+*.gz
+# Local credentials and tool state
+.env
+.env.*
+!.env.example
+.wrangler/
+.openai/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
