@@ -5,3 +5,5 @@
 
 /* Keep section navigation available while reading and using the explorer. */
 .site-header{position:sticky;top:0;z-index:100;background:var(--paper)}
+
+@media(max-width:560px){.site-header{flex-wrap:wrap;gap:8px;padding-top:12px;padding-bottom:12px;min-height:0}.site-header nav{flex-basis:100%;justify-content:space-between;gap:8px}.site-header nav>a:not(.nav-access){display:inline}.site-header nav a{font-size:10px}.site-header .nav-access{font-size:10px;padding:5px 8px}}
