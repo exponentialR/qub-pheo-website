@@ -98,9 +98,12 @@ Implementation can proceed; live activation cannot be asserted yet.
 - [x] Existing source, official EULA and Drive sharing capability inspected.
 - [x] Approval/Drive backend, append-only audit and 38 passing tests.
 - [x] Signed-PDF intake and admin UI browser-tested using fixture-only services.
-- [ ] Cloudflare resources and restricted service identity configured.
+- [x] Sam approved the scoped setup.
+- [x] Private D1/schema/binding, two-person Access policy and Google identity/folder grant configured.
+- [x] Disabled backend deployed; anonymous admin/API gates and public fallback verified.
+- [ ] Google private key, Turnstile and rate secret configured; runtime verified.
 - [ ] Live pilot approved by an authorised administrator and verified.
-Not complete: no real application records collected or Drive permissions changed.
+Not complete: no real application records collected or applicant permissions granted. The approved delivery identity now has the explicitly authorised Editor role on the release folder.
 
 ## Implementation and verification checkpoint
 User clarified signed PDFs are the current process and explicitly gave Sam the
@@ -129,8 +132,8 @@ was used as a fixture.
 Cloudflare inspection: existing Pages project has no backend variables/bindings.
 D1 account reports ~659 kB used against 5 GB storage and $0 billable D1 usage.
 Initial request cap is 250 stored requests, PDFs <=1 MB; maintain free storage
-headroom and review retention/export before raising it. No new cloud resources
-or sharing identities have been created yet. Scoped setup permission is pending.
+headroom and review retention/export before raising it. Scoped setup was subsequently approved and private resources created. See the
+20 November setup checkpoint in access-operations.md for the exact remaining work.
 
 Anti-bloat review: reuse Pages, platform fetch/Web Crypto, D1 for private small
 PDFs, Drive's own sharing email and the current EULA. No R2, e-signature vendor,

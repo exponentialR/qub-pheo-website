@@ -1,7 +1,9 @@
 # Access workflow: deployment and operations
 
 ## Current status
-Implemented and locally verified; **not live-activated**. Existing email handling
+Implemented, locally verified and **deployed with intake/delivery disabled**.
+The private D1 schema/binding, two-person Access app and restricted Google service
+identity have been created with Sam’s explicit approval. Existing email handling
 remains the fallback. Do not claim unattended delivery until an actual approved
 pilot confirms reviewer sign-in, the correct Drive ACL and notification.
 
@@ -148,3 +150,32 @@ uses in-memory SQLite, ephemeral fixture keys and simulated external responses.
 It never calls Google or sends emails and is not bundled/deployed. Use fixture
 identities/documents only. It deliberately auto-authenticates a **local fixture**
 administrator to exercise the UI; production has no such bypass.
+
+## Setup checkpoint — 20 November 2026
+
+Production deployment `da966974-378c-49f8-9837-e8b93149e1bc` contains the
+verified 907-file package from source commit `66f4ffd`. All 20 approved examples
+remain included. The live config reports intake disabled; `/request` presents the
+email fallback. Anonymous `/admin` and `/api/review/requests` reach the Access
+sign-in gate. The configured allowlist has exactly the two nominated reviewers.
+
+A new empty D1 database now contains the four application tables, status index
+and all three evidence/audit triggers. It is bound as `ACCESS_DB`. The dedicated
+Google service account was created in the existing research Drive API project
+with no project roles or domain-wide delegation, and added as Editor to only
+the approved release folder. Drive's general link remains Restricted; existing
+collaborator permissions were preserved. The Drive API was already enabled.
+
+Remaining setup: the owner must create and enter `GOOGLE_PRIVATE_KEY` directly
+in Cloudflare Secrets. The credential creation dialog and correctly named Secret
+field were left ready for the owner. No service key has been created by the agent.
+A fresh Turnstile widget is still required: the current dashboard form reports
+“No results” and does not add the valid custom `qub-pheo.pages.dev` hostname. No
+other widget was reused, no extra hostname added, and bot verification was not
+removed. `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` and `INTAKE_RATE_SECRET` remain
+unconfigured. Both activation flags remain false. Changing settings requires a
+new deployment before runtime validation.
+
+Live sign-in by both administrators and a genuine reviewed delivery pilot remain
+unverified. No applicant was invited or used as a test. Provider resource details
+and private setup evidence are recorded outside this public repository.
