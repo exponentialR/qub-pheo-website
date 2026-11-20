@@ -58,3 +58,21 @@ test('Google authentication and API use manual redirects and never follow them',
  const redirects=[];await assert.rejects(drive(async(url,options)=>{assert.equal(options.redirect,'manual');redirects.push(url);return new Response(null,{status:307,headers:{Location:'https://untrusted.example/token'}});}).inspect());
  assert.deepEqual(redirects,['https://oauth2.googleapis.com/token']);
 });
+
+test('external fetch functions are invoked without an adapter receiver',async()=>{
+ const f=googleFixture();async function strictFetch(url,options){assert.equal(this,undefined);return f.fetcher(url,options);}
+ const result=await drive(strictFetch).inspect();assert.equal(result.canShare,true);
+});
+test('private key format failures are reported without echoing the saved credential',async()=>{
+ const instance=new DriveDelivery({clientEmail:'service@example.iam.gserviceaccount.com',privateKey:'{"private_key":"fixture secret"}',folderId:'approved-folder',releaseId:policy.releaseId},()=>assert.fail('must not call Google'));
+ await assert.rejects(instance.inspect(),e=>e.code==='PRIVATE_KEY_FORMAT'&&!e.message.includes('fixture secret'));
+});
+
+test('Google JSON and quoted PEM are accepted without changing configured service identity',async()=>{
+ for(const value of [JSON.stringify(privatePem),JSON.stringify({type:'service_account',client_email:'service@example.iam.gserviceaccount.com',private_key:privatePem})]){
+  const f=googleFixture(),instance=new DriveDelivery({clientEmail:'service@example.iam.gserviceaccount.com',privateKey:value,folderId:'approved-folder',releaseId:policy.releaseId},f.fetcher);
+  assert.equal((await instance.inspect()).canShare,true);
+ }
+ const instance=new DriveDelivery({clientEmail:'service@example.iam.gserviceaccount.com',privateKey:JSON.stringify({type:'service_account',client_email:'other@example.iam.gserviceaccount.com',private_key:privatePem}),folderId:'approved-folder',releaseId:policy.releaseId},()=>assert.fail('identity mismatch must not reach Google'));
+ await assert.rejects(instance.inspect(),e=>e.code==='PRIVATE_KEY_FORMAT');
+});

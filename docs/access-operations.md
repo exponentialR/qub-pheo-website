@@ -46,7 +46,10 @@ access only to the approved release folder. For a personal Drive folder this
 requires a write-capable role, which also permits content edits: obtain explicit
 owner approval for that boundary. The application itself only lists metadata and
 creates named-user reader permissions. Do not share the raw archive or a personal
-Drive root with this identity. Store its key only in Cloudflare Secrets. Never
+Drive root with this identity. Store its key only in Cloudflare Secrets. `GOOGLE_PRIVATE_KEY` accepts either
+the complete original Google service-account JSON or its PEM private-key value.
+For JSON input, the `client_email` must exactly match `GOOGLE_CLIENT_EMAIL`; the
+JSON cannot change the configured service identity. Never
 paste credentials into Git, deployment ZIPs, chat, screenshots or command flags.
 
 Confirm the configured folder is the intended consented split-video/landmark
@@ -66,7 +69,7 @@ does not turn a mutable folder into an immutable snapshot.
 | `RELEASE_ID` | Approved release version label |
 | `DRIVE_FOLDER_ID` | Only the approved consented release folder |
 | `GOOGLE_CLIENT_EMAIL` | Restricted Google service identity |
-| `GOOGLE_PRIVATE_KEY` | Secret PKCS8 private key, not source configuration |
+| `GOOGLE_PRIVATE_KEY` | Encrypted original Google JSON or extracted PKCS8 PEM; never source |
 | `TURNSTILE_SITE_KEY` | Production widget restricted to the website hostname |
 | `TURNSTILE_SECRET_KEY` | Secret for server-side Siteverify |
 | `INTAKE_RATE_SECRET` | Secret random 32+ bytes, used for receipt/rate protection |
@@ -208,3 +211,17 @@ Anonymous access to the new diagnostic reaches the Access gate. Live public
 config still reports disabled intake. Sam’s one-time-PIN login is pending;
 therefore encrypted-key presence is verified, but actual Google authentication
 and the live private diagnostic are not yet claimed successful.
+
+### Live authentication findings
+Sam’s real Access OTP session is now verified. The application originally failed
+while fetching Access signing keys because Workers rejects `redirect: 'error'`.
+Requests now use `manual` and reject non-OK responses, preserving no-redirect
+credential handling. Safe stage codes expose no tokens/claims/secrets.
+
+The live read-only Google check reports `PRIVATE_KEY_FORMAT` for the saved value.
+The adapter now preserves the fetch function’s unbound calling convention and
+accepts original Google JSON (with exact configured service-identity matching),
+quoted PEM, or plain PEM. It never reads back a Cloudflare secret or switches the
+configured account. Updated local suite: 46 tests pass, including redirect
+rejection, native-fetch receiver behaviour and credential-format/identity checks.
+No applicant access has been created during verification.
