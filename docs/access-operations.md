@@ -199,3 +199,12 @@ owner investigation. A successful check does not prove notification delivery.
 The updated suite has 41 passing tests, including private diagnostic access,
 paused-delivery checks, ACL pagination and safe external failure reporting. A
 real admin login is still needed to run this check against production credentials.
+
+Production follow-up deployment: `def18a57-e614-4885-8929-ab5be6e41ff9` from
+source `c40015c`, with the saved encrypted Google key, Turnstile settings and
+receipt/rate salt. All 907 package entries verified (SHA-256
+`fb8d86d807665c1dea58066f86dede15932a438af7022fb881bd443fff651cc5`).
+Anonymous access to the new diagnostic reaches the Access gate. Live public
+config still reports disabled intake. Sam’s one-time-PIN login is pending;
+therefore encrypted-key presence is verified, but actual Google authentication
+and the live private diagnostic are not yet claimed successful.
