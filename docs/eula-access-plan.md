@@ -168,3 +168,10 @@ bounded diagnostic codes without exposing tokens/claims/secrets. Added regressio
 coverage verifies the supported request mode and rejection of redirect responses.
 43 tests pass. Live sign-in/connection verification follows deployment.
 Source: https://developers.cloudflare.com/workers/runtime-apis/request/
+
+Current external dependency: owner replacement of the malformed saved credential.
+Admin sign-in and real D1 audit export now work. The deployed Google parser accepts
+the original JSON only for the configured service identity; its live format check
+still fails. Do not read back or log the secret, grant test access, or enable
+intake based only on configuration presence. All independent code/testing,
+packaging and deployment work is saved. 46 tests pass.

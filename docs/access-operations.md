@@ -200,8 +200,8 @@ after key rotation or release-folder maintenance; broad-sharing warnings require
 owner investigation. A successful check does not prove notification delivery.
 
 The updated suite has 41 passing tests, including private diagnostic access,
-paused-delivery checks, ACL pagination and safe external failure reporting. A
-real admin login is still needed to run this check against production credentials.
+paused-delivery checks, ACL pagination and safe external failure reporting. The
+subsequent live checkpoint below records the real admin-session result.
 
 Production follow-up deployment: `def18a57-e614-4885-8929-ab5be6e41ff9` from
 source `c40015c`, with the saved encrypted Google key, Turnstile settings and
@@ -225,3 +225,15 @@ quoted PEM, or plain PEM. It never reads back a Cloudflare secret or switches th
 configured account. Updated local suite: 46 tests pass, including redirect
 rejection, native-fetch receiver behaviour and credential-format/identity checks.
 No applicant access has been created during verification.
+
+Latest live checkpoint: deployment `09fcea00-752f-4cce-8ab8-0b7af0685806`,
+source `4f0c480`, 907 verified files, archive SHA-256
+`bfe0d9f2d304673b19e6e6cadc521497d08f8acfbcbe8f4f2c6e07202d336622`.
+Sam’s real admin sign-in and live audit export are verified. The export contained
+four `drive_connection_failed` events and no applicant decisions/grants. The
+Google check still reports `PRIVATE_KEY_FORMAT` after accepting valid original
+JSON/quoted/plain PEM. The owner must replace the malformed saved value with the
+entire original downloaded Google JSON, unchanged, in the existing Secret field.
+The blank replacement field is prepared; the agent has not read any private key.
+After the owner saves it, redeploy, run the private connection check and retain
+its result before enabling intake/delivery. Both flags remain false.
