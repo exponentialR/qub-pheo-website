@@ -196,3 +196,32 @@ revoke existing Drive grants. Re-enable only after the read-only connection chec
 passes. New requests appear in the admin dashboard; this version does not send
 separate pending-request alert emails. Google sends invitations for new approved
 grants, and applicants can retain their private receipt URL.
+
+## Historical EULA archive
+
+The private dashboard now separates **Historical records** from new requests.
+Apply `migrations/0002_historical_records.sql` to an existing v1 database before
+deploying this version; this is additive and preserves live requests/audit rows.
+Fresh setups apply both migrations in filename order. The archive stores original
+PDF bytes, filename/hash, known form date, reported approver/sharer, source notes
+and actual authenticated importer/time. Missing contacts and event dates stay
+null. An imported record is not evidence of a new signed-JWT approval or Drive
+permission, and it has no approve/deliver/retry action. Reimporting the same file
+cannot duplicate or silently overwrite its attribution. History is immutable;
+corrections need separately recorded evidence.
+
+The combined live/historical document cap is 250, with at most 1 MB per PDF.
+Historical PDFs use the same private D1 storage and no-store download protections.
+Audit entries link through `historicalId` in details, keeping the original live
+request foreign-key contract intact. The importer’s authenticated identity is
+recorded separately from the reported past approver and data sharer.
+
+Verified historical deployment: `fdb5d57f-366c-4737-8147-beca85d8a73e`, source
+`4e55989`, 907 entries; archive SHA-256
+`69740cf41d556f903a543b6d94d56efedfd9a87411e3be73be5a756a1a5d83f1`.
+Four user-authorised originals are stored privately; all four download checksums
+and attribution fields match the private manifest. The live audit export confirms
+four archive imports and four downloads, with no new approval/grant events.
+Public intake remains active and unauthenticated deployment-alias archive API
+access is rejected. 52 tests pass; the real archived records and signed forms are
+not shipped in source or the public deployment package.
