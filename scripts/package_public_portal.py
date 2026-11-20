@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 import zipfile
 
 REPO=Path(__file__).resolve().parents[1]
-SITE_FILES={'index.html','style.css','app.js','timing.js','landmarks.js','mark.svg','404.html','_headers','_routes.json','_worker.js'}
+SITE_FILES={'index.html','style.css','app.js','timing.js','landmarks.js','mark.svg','404.html','_headers','_routes.json','request.html','request.js','admin.html','admin.js','access.css','eula/official-2025-01-09.pdf'}
 
 
 def digest(path):
@@ -20,6 +20,16 @@ def main():
     args=parser.parse_args()
     SOURCE=args.source.resolve()
     OUT=args.out.resolve()
+    bundle=REPO/'dist/worker/_worker.js'
+    manifest_path=REPO/'dist/worker/build-manifest.json'
+    if not bundle.exists() or not manifest_path.exists():raise SystemExit('Run npm run build:worker before packaging')
+    build=json.loads(manifest_path.read_text())
+    if digest(bundle)!=build['bundle_sha256']:raise SystemExit('Worker bundle changed; rebuild it')
+    for name,expected_hash in build['input_sha256'].items():
+        assert not PurePosixPath(name).is_absolute() and '..' not in PurePosixPath(name).parts
+        if digest(REPO/name)!=expected_hash:raise SystemExit('Worker source changed; run npm run build:worker')
+    agreement=json.loads((REPO/'config/agreement.json').read_text())
+    if digest(REPO/'public'/agreement['url'].lstrip('/'))!=agreement['sha256']:raise SystemExit('Official EULA snapshot differs from its configured hash')
     source_catalog=SOURCE/'catalog.json'
     catalog=json.loads(source_catalog.read_text())
     groups=catalog['groups']
@@ -46,7 +56,7 @@ def main():
     for p in paths:
         assert not PurePosixPath(p).is_absolute() and '..' not in PurePosixPath(p).parts
         assert digest(SOURCE/p)==expected[p],p
-    catalog['access']='Public playback of these 20 selected examples authorised by Sam on 18 November 2026. Full dataset still requires the official EULA and Sean McLoone approval.'
+    catalog['access']='Public playback of these 20 selected examples authorised by Sam on 18 November 2026. Full dataset still requires the official EULA and approval from Sean McLoone or Samuel Adebayo.'
     catalog['publication_scope']={'groups':20,'videos':100,'landmark_chunks':790,
         'source_catalog_sha256':digest(source_catalog),'source_export_total_bytes':422235349,
         'original_hdf5_included':False,'full_dataset_access_changed':False}
@@ -54,9 +64,10 @@ def main():
     public_catalog=OUT/'catalog.json'
     public_catalog.write_text(json.dumps(catalog,separators=(',',':'),allow_nan=False)+'\n')
     entries={name:REPO/'public'/name for name in SITE_FILES}
+    entries['_worker.js']=bundle
     entries.update({'samples/v1/'+p:SOURCE/p for p in paths})
     entries['samples/v1/catalog.json']=public_catalog
-    assert len(entries)==901 and max(p.stat().st_size for p in entries.values())<25*1024*1024
+    assert len(entries)==907 and max(p.stat().st_size for p in entries.values())<25*1024*1024
     total=sum(p.stat().st_size for p in entries.values());assert total<8_000_000_000
     archive=OUT/'qub-pheo-public-samples.zip'
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=4) as z:

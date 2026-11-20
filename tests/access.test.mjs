@@ -1,0 +1,78 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {database} from './support/database.mjs';import {ApprovalService} from '../server/approval.js';
+import {base64url,requireReviewer,requireSameOrigin} from '../server/auth.js';
+import {DriveDelivery} from '../server/drive.js';
+const reviewer={email:'reviewer@university.example'},policy={reviewerEmails:[reviewer.email],releaseId:'consented-v1',agreementVersion:'official-version-1',agreementSha256:'fixture-official-hash'};
+function ledger(){
+ const {db,sqlite:sql}=database();
+ sql.prepare('INSERT INTO access_requests(id,recipient_email,applicant_name,institution,intended_use,release_id,agreement_version,signature_reference,created_at,agreement_sha256,signature_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('r1','researcher@university.example','Researcher','University','Research',policy.releaseId,policy.agreementVersion,'private-signed-evidence',new Date().toISOString(),policy.agreementSha256,'fixture-signature-hash');
+ return {db,sql};
+}
+const approve={decision:'approve',signatureChecked:true,identityChecked:true};
+test('pending/denied requests never call Drive',async()=>{const {db}=ledger();let calls=0;const service=new ApprovalService(db,{grant:async()=>{calls++;}},policy);await assert.rejects(service.deliver('r1',reviewer));await service.decide('r1',reviewer,{decision:'deny'});await assert.rejects(service.deliver('r1',reviewer));assert.equal(calls,0);});
+test('only reviewer can approve; signature and identity checks are required',async()=>{const {db}=ledger();const service=new ApprovalService(db,{},policy);await assert.rejects(service.decide('r1',{email:'attacker@example.org'},approve));await assert.rejects(service.decide('r1',reviewer,{...approve,signatureChecked:false}));await assert.rejects(service.decide('r1',reviewer,{...approve,identityChecked:false}));assert.equal((await service.get('r1')).status,'pending');});
+test('approved immutable recipient/release is delivered once, repeat is idempotent',async()=>{const {db,sql}=ledger();const calls=[];const service=new ApprovalService(db,{grant:async input=>{calls.push(input);return {permissionId:'p1',existing:false};}},policy);await service.decide('r1',reviewer,approve);await service.deliver('r1',reviewer);await service.deliver('r1',reviewer);assert.deepEqual(calls,[{email:'researcher@university.example',releaseId:'consented-v1'}]);assert.equal(sql.prepare('SELECT count(*) AS n FROM access_events').get().n,3);});
+test('changed release or agreement prevents delivery',async()=>{const {db}=ledger();const service=new ApprovalService(db,{},policy);await service.decide('r1',reviewer,approve);const other=new ApprovalService(db,{grant:()=>assert.fail('must not grant')},{...policy,releaseId:'raw-data'});await assert.rejects(other.deliver('r1',reviewer));});
+test('failed delivery remains recoverable without manufacturing a grant',async()=>{const {db}=ledger();let calls=0;const service=new ApprovalService(db,{grant:async()=>{if(++calls===1)throw Error('timeout');return {permissionId:'existing-p1',existing:true};}},policy);await service.decide('r1',reviewer,approve);await assert.rejects(service.deliver('r1',reviewer));assert.equal((await service.get('r1')).status,'delivery_error');const result=await service.deliver('r1',reviewer);assert.equal(result.status,'delivered');assert.equal(result.existing_permission,1);});
+test('concurrent deliveries have one database claimant',async()=>{const {db}=ledger();let calls=0,release;const wait=new Promise(r=>release=r);const service=new ApprovalService(db,{grant:async()=>{calls++;await wait;return {permissionId:'p1',existing:false};}},policy);await service.decide('r1',reviewer,approve);const a=service.deliver('r1',reviewer);await new Promise(r=>setTimeout(r,5));await assert.rejects(service.deliver('r1',reviewer));release();await a;assert.equal(calls,1);});
+test('only expired interrupted claims can be recovered',async()=>{const {db,sql}=ledger();const service=new ApprovalService(db,{},policy);await service.decide('r1',reviewer,approve);sql.prepare("UPDATE access_requests SET status='delivering',delivery_started_at=? WHERE id='r1'").run(new Date().toISOString());await assert.rejects(service.recoverInterruptedDelivery('r1',reviewer));sql.prepare("UPDATE access_requests SET delivery_started_at=? WHERE id='r1'").run(new Date(Date.now()-600000).toISOString());assert.equal((await service.recoverInterruptedDelivery('r1',reviewer)).status,'delivery_error');});
+const encoder=new TextEncoder();
+let keys,privatePem,jwk;
+test.before(async()=>{keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);jwk={...await crypto.subtle.exportKey('jwk',keys.publicKey),kid:'test-key',use:'sig',alg:'RS256'};privatePem='-----BEGIN PRIVATE KEY-----\n'+Buffer.from(await crypto.subtle.exportKey('pkcs8',keys.privateKey)).toString('base64')+'\n-----END PRIVATE KEY-----';});
+async function jwt(overrides={}){const head=base64url(encoder.encode(JSON.stringify({alg:'RS256',kid:jwk.kid}))),body=base64url(encoder.encode(JSON.stringify({iss:'https://test-team.cloudflareaccess.com',aud:['app-audience'],email:reviewer.email,sub:'reviewer',exp:Date.now()/1000+300,...overrides})));return head+'.'+body+'.'+base64url(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',keys.privateKey,encoder.encode(head+'.'+body)));}
+const authEnv={ACCESS_ISSUER:'https://test-team.cloudflareaccess.com',ACCESS_AUDIENCE:'app-audience',APPROVER_EMAILS:reviewer.email};
+const keyFetch=async()=>Response.json({keys:[jwk]});
+test('signed reviewer token succeeds; unsigned email header does not',async()=>{const request=new Request('https://portal.example/api/review',{headers:{'Cf-Access-Jwt-Assertion':await jwt()}});assert.equal((await requireReviewer(request,authEnv,keyFetch)).email,reviewer.email);await assert.rejects(requireReviewer(new Request(request.url,{headers:{'Cf-Access-Authenticated-User-Email':reviewer.email}}),authEnv,keyFetch));});
+test('wrong audience, issuer, reviewer, expiry and future not-before are rejected',async()=>{for(const change of [{aud:['other']},{iss:'https://evil.example'},{email:'other@example.org'},{exp:1},{nbf:Date.now()/1000+300}])await assert.rejects(requireReviewer(new Request('https://portal.example/api/review',{headers:{'Cf-Access-Jwt-Assertion':await jwt(change)}}),authEnv,keyFetch));});
+test('tampered signature and cross-origin approval are rejected',async()=>{const value=await jwt();const pieces=value.split('.');pieces[2]=(pieces[2][0]==='A'?'B':'A')+pieces[2].slice(1);await assert.rejects(requireReviewer(new Request('https://portal.example/api/review',{headers:{'Cf-Access-Jwt-Assertion':pieces.join('.')}}),authEnv,keyFetch));assert.throws(()=>requireSameOrigin(new Request('https://portal.example/api/review',{headers:{Origin:'https://evil.example'}})));});
+function googleFixture({existing=false,failCreate=false}={}){const calls=[];const fetcher=async(url,options={})=>{calls.push({url,options});if(url==='https://oauth2.googleapis.com/token')return Response.json({access_token:'fixture-only'});if(url.includes('/permissions?')){if(options.method==='POST'){if(failCreate)return new Response('{}',{status:503});const body=JSON.parse(options.body);return Response.json({id:'new-p1',...body});}return Response.json({permissions:existing?[{id:'old-p1',type:'user',role:'writer',emailAddress:'researcher@university.example'}]:[]});}return Response.json({id:'approved-folder',mimeType:'application/vnd.google-apps.folder',trashed:false,capabilities:{canShare:true}});};return {fetcher,calls};}
+function drive(fetcher){return new DriveDelivery({clientEmail:'service@example.iam.gserviceaccount.com',privateKey:privatePem,folderId:'approved-folder',releaseId:policy.releaseId},fetcher);}
+test('Google adapter creates only named-user reader and requests Google delivery notification',async()=>{const f=googleFixture();const result=await drive(f.fetcher).grant({email:'researcher@university.example',releaseId:policy.releaseId});assert.equal(result.permissionId,'new-p1');const create=f.calls.find(c=>c.options.method==='POST'&&c.url.includes('/permissions?'));assert.deepEqual(JSON.parse(create.options.body),{type:'user',role:'reader',emailAddress:'researcher@university.example'});assert(create.url.includes('sendNotificationEmail=true'));});
+test('existing broader individual grant is preserved without duplicate create',async()=>{const f=googleFixture({existing:true});const result=await drive(f.fetcher).grant({email:'researcher@university.example',releaseId:policy.releaseId});assert.equal(result.existing,true);assert.equal(result.role,'writer');assert(!f.calls.some(c=>c.options.method==='POST'&&c.url.includes('/permissions?')));});
+test('wrong release never reaches Google and Google failure is not success',async()=>{const f=googleFixture({failCreate:true});await assert.rejects(drive(f.fetcher).grant({email:'researcher@university.example',releaseId:'raw-data'}));assert.equal(f.calls.length,0);await assert.rejects(drive(f.fetcher).grant({email:'researcher@university.example',releaseId:policy.releaseId}));});
+test('different approved requests cannot mutate the same Drive release concurrently',async()=>{
+ const {db,sql}=ledger();sql.exec("INSERT INTO access_requests(id,recipient_email,applicant_name,institution,intended_use,release_id,agreement_version,signature_reference,created_at,agreement_sha256,signature_sha256) SELECT 'r2','second@university.example',applicant_name,institution,intended_use,release_id,agreement_version,signature_reference,created_at,agreement_sha256,signature_sha256 FROM access_requests WHERE id='r1'");
+ let release,calls=0;const blocked=new Promise(r=>release=r);const service=new ApprovalService(db,{grant:async()=>{calls++;if(calls===1)await blocked;return {permissionId:'p'+calls,existing:false};}},policy);
+ await service.decide('r1',reviewer,approve);await service.decide('r2',reviewer,approve);const first=service.deliver('r1',reviewer);await new Promise(r=>setTimeout(r,5));await assert.rejects(service.deliver('r2',reviewer));assert.equal((await service.get('r2')).status,'approved');release();await first;await service.deliver('r2',reviewer);assert.equal(calls,2);
+});
+test('Google permission pagination is read before creating any grant',async()=>{const f=googleFixture();const previous=f.fetcher;const fetcher=async(url,options)=>{if(url.includes('/permissions?')&&!options?.method){f.calls.push({url,options});return url.includes('pageToken=next')?Response.json({permissions:[{id:'on-second-page',type:'user',role:'reader',emailAddress:'researcher@university.example'}]}):Response.json({permissions:[],nextPageToken:'next'});}return previous(url,options);};const result=await drive(fetcher).grant({email:'researcher@university.example',releaseId:policy.releaseId});assert.equal(result.permissionId,'on-second-page');assert.equal(result.existing,true);assert(!f.calls.some(c=>c.options?.method==='POST'&&c.url.includes('/permissions?')));});
+test('ambiguous Google create is reconciled on retry without duplicate creation',async()=>{const f=googleFixture(),previous=f.fetcher;let stored,creates=0;const fetcher=async(url,options={})=>{if(url.includes('/permissions?')){if(options.method==='POST'){creates++;stored={id:'created-before-timeout',...JSON.parse(options.body)};return new Response('{}',{status:503});}return Response.json({permissions:stored?[stored]:[]});}return previous(url,options);};const service=drive(fetcher);await assert.rejects(service.grant({email:'researcher@university.example',releaseId:policy.releaseId}));const result=await service.grant({email:'researcher@university.example',releaseId:policy.releaseId});assert.equal(result.existing,true);assert.equal(creates,1);});
+
+test('read-only connection check detects broad sharing and paginates without granting',async()=>{
+ const f=googleFixture(),previous=f.fetcher;let pages=0;const fetcher=async(url,options={})=>{
+  if(url.includes('/permissions?')){assert.notEqual(options.method,'POST');pages++;return pages===1?Response.json({permissions:[{type:'user',role:'writer',emailAddress:'service@example.iam.gserviceaccount.com'}],nextPageToken:'next'}):Response.json({permissions:[{type:'anyone',role:'reader'}]});}
+  return previous(url,options);
+ };
+ const result=await drive(fetcher).inspect();assert.equal(pages,2);assert.equal(result.restricted,false);assert.equal(result.serviceRole,'writer');assert.equal(result.permissionsChanged,false);
+ assert(!f.calls.some(c=>c.url.includes('/permissions?')&&c.options.method==='POST'));
+});
+
+test('Workers-compatible manual redirects validate Access and reject key redirects',async()=>{
+ const request=new Request('https://portal.example/api/review',{headers:{'Cf-Access-Jwt-Assertion':await jwt()}});
+ const actor=await requireReviewer(request,authEnv,async(url,options)=>{assert.equal(options.redirect,'manual');return keyFetch();});assert.equal(actor.email,reviewer.email);
+ await assert.rejects(requireReviewer(request,authEnv,async(url,options)=>{assert.equal(options.redirect,'manual');return new Response(null,{status:302,headers:{Location:'https://untrusted.example/keys'}});}));
+});
+test('Google authentication and API use manual redirects and never follow them',async()=>{
+ const f=googleFixture(),calls=[];const fetcher=async(url,options={})=>{assert.equal(options.redirect,'manual');calls.push(url);return f.fetcher(url,options);};
+ await drive(fetcher).inspect();assert(calls.length>=3);
+ const redirects=[];await assert.rejects(drive(async(url,options)=>{assert.equal(options.redirect,'manual');redirects.push(url);return new Response(null,{status:307,headers:{Location:'https://untrusted.example/token'}});}).inspect());
+ assert.deepEqual(redirects,['https://oauth2.googleapis.com/token']);
+});
+
+test('external fetch functions are invoked without an adapter receiver',async()=>{
+ const f=googleFixture();async function strictFetch(url,options){assert.equal(this,undefined);return f.fetcher(url,options);}
+ const result=await drive(strictFetch).inspect();assert.equal(result.canShare,true);
+});
+test('private key format failures are reported without echoing the saved credential',async()=>{
+ const instance=new DriveDelivery({clientEmail:'service@example.iam.gserviceaccount.com',privateKey:'{"private_key":"fixture secret"}',folderId:'approved-folder',releaseId:policy.releaseId},()=>assert.fail('must not call Google'));
+ await assert.rejects(instance.inspect(),e=>e.code==='PRIVATE_KEY_FORMAT'&&!e.message.includes('fixture secret'));
+});
+
+test('Google JSON and quoted PEM are accepted without changing configured service identity',async()=>{
+ for(const value of [JSON.stringify(privatePem),JSON.stringify({type:'service_account',client_email:'service@example.iam.gserviceaccount.com',private_key:privatePem})]){
+  const f=googleFixture(),instance=new DriveDelivery({clientEmail:'service@example.iam.gserviceaccount.com',privateKey:value,folderId:'approved-folder',releaseId:policy.releaseId},f.fetcher);
+  assert.equal((await instance.inspect()).canShare,true);
+ }
+ const instance=new DriveDelivery({clientEmail:'service@example.iam.gserviceaccount.com',privateKey:JSON.stringify({type:'service_account',client_email:'other@example.iam.gserviceaccount.com',private_key:privatePem}),folderId:'approved-folder',releaseId:policy.releaseId},()=>assert.fail('identity mismatch must not reach Google'));
+ await assert.rejects(instance.inspect(),e=>e.code==='PRIVATE_KEY_FORMAT');
+});

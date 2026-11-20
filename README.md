@@ -11,7 +11,9 @@ study protocol, assembly tasks, preprocessing, evaluation and limitations.
 ## Repository contents
 
 - `public/`: buildless HTML, CSS, JavaScript and Cloudflare routing/header files.
-- `tests/`: timing, path, access-boundary and body-topology regression tests.
+- `server/` and `migrations/`: approval/delivery backend and private audit schema.
+- `tests/`: viewer, security, SQL state-machine and external-API boundary tests.
+- `public/eula/`: the unsigned official agreement, never applicant documents.
 - `scripts/export_web_samples.py`: offline browser export using the pinned
   QUB-HRI readers and ffmpeg.
 - `scripts/package_public_portal.py`: verified, explicit deployment allowlist.
@@ -19,12 +21,15 @@ study protocol, assembly tasks, preprocessing, evaluation and limitations.
 **No videos, landmark data, dataset manifests, model weights or deployment ZIPs
 are committed.** The public website serves 20 approved examples separately from
 Git. Full dataset delivery stays on Drive, subject to the official EULA and
-Seán McLoone’s approval. This code repository does not change dataset permissions.
-Electronic-signature administration and automatic Drive delivery are not implemented.
+approval from Seán McLoone or Samuel Adebayo. This code repository does not change dataset permissions.
+Signed-PDF intake, private admin review, audit export and the approved Drive
+delivery path are live. Sam’s admin login and the restricted Google connection
+are verified; the first genuine approved delivery remains a pilot check. See [access operations](docs/access-operations.md).
 
 ## Local development
 
-No frontend framework, installation or build step is needed. Use Python 3 to serve:
+The visualiser is plain HTML/JS. Node 24 is used for backend tests and bundling.
+For a source-only frontend preview, use Python 3:
 
 ```bash
 python -m http.server 8765 --bind 127.0.0.1 --directory public
@@ -38,7 +43,8 @@ intentionally absent from Git. Files selected locally remain in the browser.
 Run the tests with a current Node.js:
 
 ```bash
-node --test tests/*.test.mjs
+npm ci
+npm test
 ```
 
 ## Prepare browser samples
@@ -65,6 +71,7 @@ The current approved sample set has 20 groups, each with AV/UL/UR/LL/LR video an
 matching landmarks. Packaging validates that exact scope and source checksums:
 
 ```bash
+npm run build:worker
 python scripts/package_public_portal.py --source /path/to/web-v1 --out dist
 ```
 
@@ -80,8 +87,9 @@ Cloudflare publishing. Pages serves sample files as static assets, without R2.
 No new paid plan or domain is required for this deployment. The package remains
 below the dashboard's 1,000-file / 25 MiB-per-file limits and the 8 GB sample budget.
 
-The `/api/*` handler remains closed until a real controlled-access backend is
-configured. Public examples live under `/samples/v1/`; they do not unlock the
+The access API is configured with a private database, administrator sign-in,
+bot protection and a Google identity scoped to the approved release folder. The legacy gated
+media API remains closed. Public examples live under `/samples/v1/`; they do not unlock the
 full dataset or bypass the EULA process.
 
 ## Research references
@@ -89,3 +97,31 @@ full dataset or bypass the EULA process.
 - [Dataset paper: IEEE Access (2024)](https://doi.org/10.1109/ACCESS.2024.3485162)
 - [QUB-PHEO dataset documentation and benchmarks](https://github.com/exponentialR/QUB-PHEO)
 - [QUB-HRI preprocessing and original local visualiser](https://github.com/exponentialR/QUB-HRI)
+
+## EULA requests and admin dashboard
+
+Applicants upload the existing signed PDF at `/request.html`; authorised admins
+review it at `/admin.html`. Both nominated administrators can approve or deny,
+inspect document hashes, reconcile approved delivery failures and export the full
+audit snapshot. Pending or denied requests cannot create Drive permissions.
+New grants are individual readers; existing permissions are preserved.
+
+Production intake is enabled. See
+[access operations](docs/access-operations.md) for verified state, remaining pilot
+checks and safe pause/recovery. The public sample
+explorer remains independent. For a safe fixture-only UI test, run:
+
+```bash
+npm run dev:access
+```
+
+One build-only dependency (esbuild) bundles the Worker; it adds no runtime cloud
+service. Private small signed PDFs reside in D1, avoiding a new object-store or
+mail vendor. No applicant records or credentials belong in this repository.
+
+Historical signed agreements can be archived separately in the private dashboard.
+Their original PDF/hash/filename, reported approver and data sharer, known form
+date and actual import provenance are preserved. Unknown contacts or historical
+event dates stay unknown; archival imports never call Google’s sharing API. Apply
+`migrations/0002_historical_records.sql` to an existing v1 database before deploying
+this version. Signed documents and historical applicant metadata stay outside Git.
